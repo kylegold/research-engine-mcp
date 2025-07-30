@@ -67,6 +67,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
   const token = authHeader.substring(7);
 
+  // Verify as JWT
   try {
     const payload = await verifyToken(token);
     req.user = {

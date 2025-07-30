@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "research-engine": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "cwd": "/Users/kylegoldfarb/research-mcp",
+      "env": {
+        "OPENAI_API_KEY": "your-openai-api-key-here",
+        "SKIP_AUTH": "true"
+      }
+    }
+  }
+}

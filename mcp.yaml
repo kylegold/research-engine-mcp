@@ -3,7 +3,7 @@ metadata:
   name: "research-engine"
   description: "AI-powered research automation that turns briefs into actionable insights"
   author: "Kyle Goldfarb"
-  homepage: "https://github.com/kylegoldfarb/research-engine-mcp"
+  homepage: "https://github.com/kylegold/research-engine-mcp"
   license: "MIT"
 
 server:
@@ -46,7 +46,15 @@ server:
           - name: "sources"
             type: "array"
             required: false
-            description: "Preferred sources to search (github, reddit, stackoverflow)"
+            description: "Preferred sources to search (github, reddit, websearch)"
+          - name: "exportFormat"
+            type: "string"
+            required: false
+            description: "Export format: notion, markdown, json"
+          - name: "exportCredentials"
+            type: "object"
+            required: false
+            description: "Credentials for export (e.g., notionKey, notionDatabaseId)"
             
       - name: "research_status"
         description: "Check the status of a research job"

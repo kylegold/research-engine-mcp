@@ -1,146 +1,210 @@
 # Research Engine MCP Server
 
-AI-powered research automation that turns natural language briefs into actionable insights. Built for commands.com.
+AI-powered research automation that turns natural language briefs into comprehensive, actionable insights. Built for [commands.com](https://commands.com).
 
-## Features
+## 🚀 Features
 
-- 🔍 **Automated Research**: Submit a brief and get comprehensive analysis
-- 🌐 **Multi-Source**: Searches GitHub, Reddit, Stack Overflow, and more
-- 🤖 **AI Analysis**: Extracts pain points, opportunities, and insights
-- 📊 **Export Options**: Notion, Markdown, or JSON output
-- ⚡ **Async Processing**: Non-blocking with job status tracking
+- **🔍 Automated Multi-Source Research**: Searches GitHub repositories, web sources, and more
+- **🤖 AI-Powered Analysis**: Uses OpenAI to extract pain points, opportunities, and actionable insights
+- **📊 Flexible Export**: Output to Notion, Markdown, or JSON
+- **⚡ Async Processing**: Non-blocking with real-time progress tracking via SSE
+- **🔌 Plugin Architecture**: Extensible system for adding new data sources and export formats
+- **💾 Zero Dependencies**: Uses SQLite for job queue (no Redis required)
+- **🏭 Production Ready**: Circuit breakers, rate limiting, and comprehensive error handling
 
-## Architecture
+## 🏗️ Architecture
 
-This MCP server implements a queue-based architecture:
-- **MCP Server**: Stateless Express.js server that returns job IDs immediately
+This MCP server implements a modern, scalable architecture:
+
+- **MCP Server**: Stateless Express.js server that handles commands.com requests
 - **Worker Process**: Background worker that processes research jobs (5-60 minutes)
-- **Redis Queue**: BullMQ for job management and progress tracking
-- **Same Codebase**: Both server and worker are in this repo
+- **SQLite Queue**: Lightweight job management with no external dependencies
+- **Plugin System**: Modular architecture for sources (GitHub, Web) and exports (Notion, Markdown)
+- **Real-time Updates**: Server-Sent Events (SSE) for progress streaming
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Clone and Install
+### Prerequisites
+
+- Node.js 18+ 
+- OpenAI API key (required)
+- GitHub token (optional, for better rate limits)
+- Notion API key (optional, for Notion export)
+
+### Installation
 
 ```bash
-git clone https://github.com/yourusername/research-engine-mcp
+# Clone the repository
+git clone https://github.com/kylegold/research-engine-mcp
 cd research-engine-mcp
+
+# Install dependencies
 npm install
+
+# Build TypeScript
+npm run build
 ```
 
-### 2. Configure Environment
+### Configuration
 
-```bash
-cp .env.example .env
-# Edit .env with your configuration
+Create a `.env` file:
+
+```env
+# Required
+OPENAI_API_KEY=your-openai-api-key
+
+# Optional (for enhanced features)
+GITHUB_TOKEN=your-github-token
+PLUGIN_REDDIT_CLIENTID=your-reddit-client-id
+PLUGIN_REDDIT_CLIENTSECRET=your-reddit-client-secret
 ```
 
-Required environment variables:
-- `REDIS_URL`: Redis connection for job queue
-- `GITHUB_TOKEN`: GitHub personal access token
-- `OPENAI_API_KEY`: OpenAI API key for analysis
-- `REDDIT_CLIENT_ID/SECRET`: Reddit API credentials (optional)
-
-### 3. Start Redis
+### Running Locally
 
 ```bash
-# Using Docker
-docker run -d -p 6379:6379 redis:alpine
-
-# Or install locally
-brew install redis  # macOS
-brew services start redis
-```
-
-### 4. Run Development Server
-
-```bash
-# Run both MCP server and worker
+# Run both server and worker (recommended)
 npm run dev:all
 
 # Or run separately:
 npm run dev        # MCP server only
 npm run dev:worker # Worker only
 
-# With auth disabled for testing
+# Test without auth (development only)
 SKIP_AUTH=true npm run dev:all
 ```
 
-### 5. Test the Tools
+## 📡 Available Tools
+
+### `research_brief`
+Submit a research request and receive a job ID for tracking.
+
+**Parameters:**
+- `brief` (required): Natural language description of what to research
+- `depth`: Research depth - `quick` (5-10min), `standard` (15-30min), or `deep` (45-60min)
+- `sources`: Array of sources to search (defaults to all available)
+- `exportFormat`: Output format - `notion`, `markdown`, or `json`
+- `exportCredentials`: Credentials for export (e.g., `{notionKey, notionDatabaseId}`)
+
+**Example:**
+```json
+{
+  "brief": "Find developer pain points for React deployment workflows",
+  "depth": "standard",
+  "sources": ["github", "websearch"],
+  "exportFormat": "markdown"
+}
+```
+
+### `research_status`
+Check the status and progress of a research job.
+
+**Parameters:**
+- `jobId` (required): The job ID returned from research_brief
+
+**Example:**
+```json
+{
+  "jobId": "abc-123-def-456"
+}
+```
+
+### `research_export`
+Export completed research results (if not auto-exported).
+
+**Parameters:**
+- `jobId` (required): The job ID to export
+- `format`: Export format (overrides original setting)
+
+## 🔌 Plugin System
+
+### Available Source Plugins
+
+- **GitHub**: Searches repositories and issues (10-50k stars)
+- **WebSearch**: General web search with relevance scoring
+- **Auto**: Automatically selects appropriate sources
+
+### Available Export Plugins
+
+- **Notion**: Creates rich pages in your Notion workspace
+- **Markdown**: Generates comprehensive markdown reports
+- **JSON**: Structured data for programmatic use
+
+### Creating Custom Plugins
+
+See [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT.md) for creating your own source or export plugins.
+
+## 🚀 Deployment
+
+### Deploy to Railway (Recommended)
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/deploy-research-engine)
+
+1. Click the deploy button
+2. Add your `OPENAI_API_KEY`
+3. Deploy! (SQLite database is created automatically)
+
+### Manual Deployment
+
+The server includes a `Dockerfile` and is ready for deployment to any container platform:
 
 ```bash
-# Test research_brief tool
-curl -X POST http://localhost:3000/mcp/tools/research_brief \
-  -H "Content-Type: application/json" \
-  -d '{"brief": "Find developer pain points for React deployment"}'
+# Build the image
+docker build -t research-engine .
 
-# Check status
-curl -X POST http://localhost:3000/mcp/tools/research_status \
-  -H "Content-Type: application/json" \
-  -d '{"jobId": "YOUR_JOB_ID"}'
+# Run the container
+docker run -e OPENAI_API_KEY=your-key -p 3000:3000 research-engine
 ```
 
-## Available Tools
+## 📊 Performance & Limits
 
-### research_brief
-Submit a research request
-```json
-{
-  "brief": "Your research question",
-  "depth": "standard",  // quick, standard, or deep
-  "sources": ["github", "reddit"]
-}
+- Handles 10,000+ jobs per day with SQLite
+- Concurrent plugin execution (5 parallel by default)
+- Built-in rate limiting for external APIs
+- Circuit breakers prevent cascade failures
+- In-memory caching reduces API calls
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+src/
+├── plugins/           # Plugin system
+│   ├── sources/      # Data source plugins
+│   └── exports/      # Export format plugins
+├── services/         # Core services
+│   └── simpleQueue.ts # SQLite job queue
+├── analysis/         # AI analysis engine
+├── utils/           # Utilities (cache, rate limiter, etc.)
+└── worker.ts        # Background job processor
 ```
 
-### research_status
-Check job progress
-```json
-{
-  "jobId": "abc-123-def"
-}
-```
-
-### research_export
-Export completed research
-```json
-{
-  "jobId": "abc-123-def",
-  "format": "notion"  // notion, markdown, or json
-}
-```
-
-## Deployment
-
-### Deploy to Railway
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/)
-
-1. Click the button above
-2. Configure environment variables
-3. Deploy!
-
-### Deploy to Heroku
+### Testing
 
 ```bash
-heroku create your-research-engine
-heroku config:set RESEARCH_API_URL=https://your-api.com
-heroku config:set RESEARCH_API_KEY=your-key
-git push heroku main
+# Test the database connection
+npm run test:db
+
+# Run the test suite
+npm test
 ```
 
-## Building Your Research API
+### Building
 
-The MCP server delegates to your Research API. Here's the required endpoints:
+```bash
+# Build TypeScript
+npm run build
 
+# Run linting
+npm run lint
+
+# Format code
+npm run format
 ```
-POST   /api/jobs          # Create research job
-GET    /api/jobs/:id      # Get job status  
-POST   /api/jobs/:id/export  # Export results
-```
 
-See [research-api-example](./docs/research-api-example.md) for implementation details.
+## 🤝 Contributing
 
-## Contributing
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing`)
@@ -148,6 +212,21 @@ See [research-api-example](./docs/research-api-example.md) for implementation de
 4. Push to the branch (`git push origin feature/amazing`)
 5. Open a Pull Request
 
-## License
+## 📝 License
 
-MIT - see [LICENSE](LICENSE) file
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built for [commands.com](https://commands.com)
+- Powered by OpenAI for intelligent analysis
+- Plugin architecture inspired by production MCP patterns
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/kylegold/research-engine-mcp/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/kylegold/research-engine-mcp/discussions)
+
+---
+
+Made with ❤️ by Kyle Goldfarb
