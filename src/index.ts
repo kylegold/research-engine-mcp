@@ -2,9 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import { v4 as uuidv4 } from 'uuid';
+import pLimit from 'p-limit';
 import { authMiddleware } from './auth/verifyToken.js';
 import { tools } from './tools/index.js';
 import { createLogger } from './utils/logger.js';
+import { initializePlugins, runResearch } from './plugins/simple-orchestrator.js';
 import type { MCPRequest, MCPResponse } from './types.js';
 
 // Load environment variables
@@ -14,6 +17,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const logger = createLogger('mcp-server');
 
+// In-memory job store (can be replaced with Redis/DB for persistence)
+const jobs = new Map<string, {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  result?: any;
+  error?: string;
+  createdAt: Date;
+  completedAt?: Date;
+}>();
+
+// Limit concurrent research jobs
+const jobQueue = pLimit(3); // Max 3 concurrent research jobs
+
 // Middleware
 app.use(helmet());
 app.use(cors({
@@ -22,23 +39,29 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-// Root endpoint with basic info
+// Initialize plugins on startup
+initializePlugins().catch(err => {
+  logger.error({ error: err }, 'Failed to initialize plugins');
+});
+
+// Root endpoint
 app.get('/', (_req, res) => {
   res.json({
     name: 'research-engine',
     description: 'AI-powered research automation',
-    version: '1.0.0',
+    version: '2.0.0',
     endpoints: {
       health: '/health',
       discovery: '/.well-known/mcp.json',
       tools: '/mcp/tools',
-      execute: '/mcp/tools/:toolName'
-    },
-    tools: Array.from(tools.values()).map(tool => `${tool.name} - ${tool.description}`)
+      execute: '/mcp/tools/:toolName',
+      status: '/research/:jobId',
+      mcp: '/' // Main JSON-RPC endpoint
+    }
   });
 });
 
-// Health check endpoint
+// Health check endpoint - simple and fast
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'research-engine-mcp' });
 });
@@ -49,7 +72,7 @@ app.get('/.well-known/mcp.json', (_req, res) => {
     schemaVersion: "2024-11-05",
     vendor: "Commands.com",
     name: "research-engine",
-    version: "1.0.0",
+    version: "2.0.0",
     description: "AI-powered research automation",
     license: "MIT",
     capabilities: {
@@ -59,7 +82,7 @@ app.get('/.well-known/mcp.json', (_req, res) => {
     },
     serverInfo: {
       name: "research-engine",
-      version: "1.0.0"
+      version: "2.0.0"
     }
   });
 });
@@ -89,41 +112,74 @@ app.post('/mcp/tools/:toolName', authMiddleware, async (req, res) => {
     const result = await tool.handler(req.body, { user: req.user });
     res.json(result);
   } catch (error) {
-    console.error(`Error executing tool ${toolName}:`, error);
+    logger.error(`Error executing tool ${toolName}:`, error);
     res.status(500).json({ 
       error: error instanceof Error ? error.message : 'Tool execution failed' 
     });
   }
 });
 
-// Helper function to send streaming responses for SSE-enabled gateways
-function sendStreamingResponse(res: express.Response, result: any, id: any) {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
+// Research job status endpoint
+app.get('/research/:jobId', authMiddleware, async (req, res) => {
+  const job = jobs.get(req.params.jobId || '');
   
-  const response = { jsonrpc: '2.0', result, id };
-  res.write(`data: ${JSON.stringify(response)}\n\n`);
-  res.end();
+  if (!job) {
+    res.status(404).json({ error: 'Job not found' });
+    return;
+  }
+  
+  res.json({
+    id: job.id,
+    status: job.status,
+    progress: job.progress,
+    result: job.result,
+    error: job.error,
+    createdAt: job.createdAt,
+    completedAt: job.completedAt
+  });
+});
+
+// Process research job asynchronously
+async function processResearchJob(jobId: string, brief: string, options: any) {
+  const job = jobs.get(jobId);
+  if (!job) return;
+  
+  try {
+    job.status = 'processing';
+    job.progress = 10;
+    
+    // Run research using simplified orchestrator
+    const result = await runResearch(brief, options, (progress) => {
+      if (job) job.progress = Math.min(progress, 90);
+    });
+    
+    job.status = 'completed';
+    job.progress = 100;
+    job.result = result;
+    job.completedAt = new Date();
+    
+    logger.info({ jobId, duration: Date.now() - job.createdAt.getTime() }, 'Research job completed');
+  } catch (error) {
+    job.status = 'failed';
+    job.error = error instanceof Error ? error.message : 'Unknown error';
+    job.completedAt = new Date();
+    
+    logger.error({ jobId, error }, 'Research job failed');
+  }
 }
 
 // Main JSON-RPC endpoint
 app.post('/', async (req, res) => {
-  // Check if client supports SSE
-  const acceptsSSE = req.headers.accept?.includes('text/event-stream');
-  
   const request = req.body as MCPRequest;
   const response: MCPResponse = {
     jsonrpc: '2.0',
     id: request.id
   };
 
-  // Allow certain methods without authentication for commands.com verification
+  // Allow certain methods without authentication
   const publicMethods = ['initialize', 'notifications/initialized', 'tools/list', 'resources/list', 'prompts/list'];
   const requiresAuth = !publicMethods.includes(request.method);
 
-  // Apply authentication only for methods that require it
   if (requiresAuth && process.env.SKIP_AUTH !== 'true') {
     await new Promise<void>((resolve, reject) => {
       authMiddleware(req, res, (err?: any) => {
@@ -131,14 +187,11 @@ app.post('/', async (req, res) => {
         else resolve();
       });
     }).catch(() => {
-      // Auth failed, response already sent by authMiddleware
       return;
     });
 
-    // If auth failed, authMiddleware already sent response
     if (res.headersSent) return;
   } else if (process.env.SKIP_AUTH === 'true' && process.env.NODE_ENV === 'development') {
-    // Mock user for development
     req.user = { id: 'dev-user', email: 'dev@example.com' };
   }
 
@@ -154,14 +207,14 @@ app.post('/', async (req, res) => {
           },
           serverInfo: {
             name: 'research-engine',
-            version: '1.0.0'
+            version: '2.0.0'
           }
         };
         break;
 
       case 'notifications/initialized':
-        // Notification - no response needed
-        return res.status(200).end();
+        res.status(200).end();
+        return;
 
       case 'tools/list':
         response.result = {
@@ -184,16 +237,185 @@ app.post('/', async (req, res) => {
           };
         } else {
           try {
-            const result = await tool.handler(args, { user: req.user });
-            // Wrap result in MCP format
-            response.result = {
-              content: [
-                {
-                  type: 'text',
-                  text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+            // Special handling for research_brief - make it async
+            if (name === 'research_brief') {
+              const jobId = uuidv4();
+              const job = {
+                id: jobId,
+                status: 'pending' as const,
+                progress: 0,
+                createdAt: new Date()
+              };
+              jobs.set(jobId, job);
+              
+              // Queue the job for processing
+              jobQueue(async () => {
+                await processResearchJob(jobId, args.brief, {
+                  depth: args.depth,
+                  sources: args.sources,
+                  exportFormat: args.exportFormat,
+                  exportCredentials: args.exportCredentials,
+                  userId: req.user?.id
+                });
+              });
+              
+              response.result = {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({
+                      success: true,
+                      jobId,
+                      message: `Research job started! Check status with research_status tool using jobId: ${jobId}`,
+                      estimatedTime: args.depth === 'deep' ? '5-10 minutes' : '2-5 minutes'
+                    }, null, 2)
+                  }
+                ]
+              };
+            } else if (name === 'research_status') {
+              // Handle status checking
+              const job = jobs.get(args.jobId);
+              
+              if (!job) {
+                response.result = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({
+                        success: false,
+                        error: 'Job not found',
+                        message: 'Research job not found. Please check the jobId.'
+                      }, null, 2)
+                    }
+                  ]
+                };
+              } else {
+                let statusResponse: any;
+                
+                if (job.status === 'completed') {
+                  statusResponse = {
+                    success: true,
+                    jobId: job.id,
+                    status: job.status,
+                    message: 'Research completed successfully!',
+                    result: job.result,
+                    completedAt: job.completedAt,
+                    nextStep: 'Use research_export to view the results'
+                  };
+                } else if (job.status === 'failed') {
+                  statusResponse = {
+                    success: false,
+                    jobId: job.id,
+                    status: job.status,
+                    error: job.error || 'Research job failed',
+                    message: 'The research job encountered an error'
+                  };
+                } else {
+                  statusResponse = {
+                    success: true,
+                    jobId: job.id,
+                    status: job.status,
+                    progress: job.progress || 0,
+                    message: `Research in progress (${job.progress}% complete)`,
+                    hint: 'Check back in a few moments'
+                  };
                 }
-              ]
-            };
+                
+                response.result = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify(statusResponse, null, 2)
+                    }
+                  ]
+                };
+              }
+            } else if (name === 'research_export') {
+              // Handle export
+              const job = jobs.get(args.jobId);
+              
+              if (!job) {
+                response.result = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({
+                        success: false,
+                        error: 'Job not found',
+                        message: 'Research job not found. Please check the jobId.'
+                      }, null, 2)
+                    }
+                  ]
+                };
+              } else if (job.status !== 'completed') {
+                response.result = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({
+                        success: false,
+                        message: `Cannot export: Research job is ${job.status}. Please wait for completion.`,
+                        currentStatus: job.status,
+                        progress: job.progress
+                      }, null, 2)
+                    }
+                  ]
+                };
+              } else {
+                // Format results based on requested format
+                const format = args.format || 'markdown';
+                let exportContent: string;
+                
+                if (format === 'json') {
+                  exportContent = JSON.stringify(job.result, null, 2);
+                } else if (format === 'markdown') {
+                  // Simple markdown formatting
+                  const result = job.result;
+                  exportContent = `# Research Results\n\n`;
+                  exportContent += `**Query**: ${result.query || 'N/A'}\n\n`;
+                  exportContent += `**Summary**: ${result.summary || 'No summary available'}\n\n`;
+                  exportContent += `## Sources Found (${result.sources?.length || 0})\n\n`;
+                  
+                  if (result.sources && result.sources.length > 0) {
+                    result.sources.forEach((source: any, index: number) => {
+                      exportContent += `### ${index + 1}. ${source.title}\n`;
+                      exportContent += `- **URL**: ${source.url}\n`;
+                      exportContent += `- **Content**: ${source.content}\n`;
+                      if (source.metadata) {
+                        exportContent += `- **Metadata**: ${JSON.stringify(source.metadata)}\n`;
+                      }
+                      exportContent += '\n';
+                    });
+                  }
+                } else {
+                  exportContent = 'Format not supported yet';
+                }
+                
+                response.result = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({
+                        success: true,
+                        format,
+                        content: exportContent
+                      }, null, 2)
+                    }
+                  ]
+                };
+              }
+            } else {
+              // Handle other tools normally
+              const result = await tool.handler(args, { user: req.user });
+              response.result = {
+                content: [
+                  {
+                    type: 'text',
+                    text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+                  }
+                ]
+              };
+            }
           } catch (error) {
             response.error = {
               code: -32603,
@@ -222,7 +444,7 @@ app.post('/', async (req, res) => {
         };
     }
   } catch (error) {
-    console.error('MCP request error:', error);
+    logger.error('MCP request error:', error);
     response.error = {
       code: 'InternalError',
       message: 'Internal server error',
@@ -230,83 +452,12 @@ app.post('/', async (req, res) => {
     };
   }
 
-  // Use SSE if client supports it and we have a result
-  if (acceptsSSE && response.result) {
-    return sendStreamingResponse(res, response.result, request.id);
-  }
-  
   res.json(response);
-});
-
-// SSE endpoint for progress updates
-app.get('/research/:jobId/stream', authMiddleware, async (req, res) => {
-  const { jobId } = req.params;
-  const simpleQueue = await import('./services/simpleQueue.js');
-  
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no' // Disable Nginx buffering
-  });
-
-  // Send initial connection event
-  res.write(`event: connected\ndata: {"jobId": "${jobId}"}\n\n`);
-  
-  let lastStatus = '';
-  
-  // Poll for progress updates
-  const interval = setInterval(async () => {
-    try {
-      const job = await simpleQueue.getJob(jobId || '');
-      const progressData = await simpleQueue.getJobProgress(jobId || '');
-      
-      if (job) {
-        const progress = progressData || {
-          jobId: job.id,
-          status: job.status,
-          percentComplete: job.progress,
-          currentStep: job.currentStep || 'Processing',
-          messages: [],
-          pluginStatuses: {},
-          metadata: {
-            jobId: job.id,
-            createdAt: job.createdAt.toISOString(),
-            startedAt: job.startedAt?.toISOString(),
-            attempt: job.attempts,
-            maxAttempts: 3
-          }
-        };
-        
-        // Send progress event
-        res.write(`event: progress\ndata: ${JSON.stringify(progress)}\n\n`);
-        
-        // If job is complete or failed, send final event and close
-        if (job.status === 'completed' || job.status === 'failed') {
-          if (lastStatus !== job.status) {
-            res.write(`event: ${job.status}\ndata: ${JSON.stringify(progress)}\n\n`);
-            clearInterval(interval);
-            res.end();
-          }
-        }
-        
-        lastStatus = job.status;
-      }
-    } catch (error) {
-      logger.error({ error, jobId }, 'Error streaming progress');
-    }
-  }, 1000); // Poll every second
-  
-  // Cleanup on client disconnect
-  req.on('close', () => {
-    clearInterval(interval);
-    logger.info({ jobId }, 'Client disconnected from stream');
-  });
 });
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
+  logger.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -315,4 +466,10 @@ app.listen(PORT, () => {
   console.log(`Research Engine MCP server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
   console.log(`Auth: ${process.env.SKIP_AUTH === 'true' ? 'DISABLED (dev mode)' : 'ENABLED'}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  process.exit(0);
 });

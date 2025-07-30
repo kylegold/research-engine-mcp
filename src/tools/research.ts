@@ -1,15 +1,4 @@
-import { z } from 'zod';
 import type { Tool } from '../types.js';
-import { researchApi } from '../services/researchApi.js';
-
-// Input schema for research_brief
-const ResearchBriefSchema = z.object({
-  brief: z.string().min(10).describe('Natural language description of what you want to research'),
-  depth: z.enum(['quick', 'standard', 'deep']).optional().default('standard'),
-  sources: z.array(z.string()).optional().default(['github', 'reddit']),
-  exportFormat: z.enum(['notion', 'markdown', 'json']).optional().default('markdown'),
-  exportCredentials: z.record(z.string()).optional().describe('Credentials for export plugin (e.g., API keys)')
-});
 
 export const researchBriefTool: Tool = {
   name: 'research_brief',
@@ -25,14 +14,14 @@ export const researchBriefTool: Tool = {
       depth: {
         type: 'string',
         enum: ['quick', 'standard', 'deep'],
-        description: 'Research depth: quick (5-10min), standard (15-30min), deep (45-60min)',
+        description: 'Research depth: quick (2-3min), standard (5-7min), deep (10-15min)',
         default: 'standard'
       },
       sources: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Preferred sources to search (github, reddit, stackoverflow)',
-        default: ['github', 'reddit']
+        description: 'Preferred sources to search (github, websearch)',
+        default: ['github', 'websearch']
       },
       exportFormat: {
         type: 'string',
@@ -48,42 +37,11 @@ export const researchBriefTool: Tool = {
     },
     required: ['brief']
   },
-  handler: async (args, context) => {
-    try {
-      // Validate input
-      const input = ResearchBriefSchema.parse(args);
-      
-      // Validate Notion credentials if needed
-      if (input.exportFormat === 'notion' && (!input.exportCredentials?.notionKey || !input.exportCredentials?.notionDatabaseId)) {
-        throw new Error('Notion API key and database ID are required in exportCredentials when export format is notion');
-      }
-      
-      // Create research job
-      const response = await researchApi.createJob({
-        brief: input.brief,
-        depth: input.depth,
-        sources: input.sources,
-        userId: context.user?.id,
-        exportFormat: input.exportFormat,
-        exportCredentials: input.exportCredentials
-      });
-
-      return {
-        success: true,
-        jobId: response.jobId,
-        message: `Research job started! Check status with research_status tool using jobId: ${response.jobId}`,
-        estimatedTime: researchApi.getEstimatedTime(input.depth),
-        details: {
-          brief: input.brief,
-          depth: input.depth,
-          sources: input.sources
-        }
-      };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        throw new Error(`Invalid input: ${error.errors.map(e => e.message).join(', ')}`);
-      }
-      throw error;
-    }
+  handler: async () => {
+    // The actual job submission is handled in index.ts
+    // This handler is called but the real work happens in the main server
+    return {
+      info: 'Job submission handled by main server'
+    };
   }
 };
