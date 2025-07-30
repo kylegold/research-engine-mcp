@@ -200,7 +200,7 @@ export class AIAnalyzer {
   private calculateConfidence(documents: Document[], analysisData: any): number {
     const factors = {
       documentCount: Math.min(documents.length / 10, 1) * 0.3,
-      sourceDiv diversity: new Set(documents.map(d => d.metadata.source)).size / 5 * 0.2,
+      sourceDiversity: new Set(documents.map(d => d.metadata.source)).size / 5 * 0.2,
       hasInsights: (analysisData.insights?.length > 0 ? 1 : 0) * 0.3,
       hasCitations: (analysisData.citations?.length > 0 ? 1 : 0) * 0.2
     };
