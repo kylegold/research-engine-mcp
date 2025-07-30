@@ -370,7 +370,7 @@ export class PluginOrchestrator extends EventEmitter {
   /**
    * Generate basic recommendations without AI
    */
-  private generateBasicRecommendations(documents: Document[], query: string): string[] {
+  private generateBasicRecommendations(documents: Document[], _query: string): string[] {
     const recommendations: string[] = [];
     
     if (documents.length < 5) {

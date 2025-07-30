@@ -57,7 +57,7 @@ export class AIAnalyzer {
         response_format: { type: 'json_object' }
       });
 
-      const analysisData = JSON.parse(response.choices[0].message.content || '{}');
+      const analysisData = JSON.parse(response.choices[0]?.message?.content || '{}');
       
       // Build analysis result
       const result: AnalysisResult = {

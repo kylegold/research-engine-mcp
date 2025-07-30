@@ -10,14 +10,10 @@ const logger = createLogger('notion-export');
  * Creates beautiful research pages in Notion
  */
 export class NotionExportPlugin extends BaseExportPlugin {
-  constructor() {
-    super({
-      id: 'notion',
-      name: 'Notion Export',
-      description: 'Export research results to Notion',
-      format: 'notion'
-    });
-  }
+  id = 'notion';
+  name = 'Notion Export';
+  description = 'Export research results to Notion';
+  format = 'notion';
 
   /**
    * Validate Notion configuration
@@ -29,7 +25,7 @@ export class NotionExportPlugin extends BaseExportPlugin {
   /**
    * Export analysis to Notion
    */
-  async export(
+  protected async doExport(
     analysis: AnalysisResult,
     context: ExportContext
   ): Promise<ExportResult> {
