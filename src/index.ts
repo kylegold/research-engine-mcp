@@ -154,7 +154,7 @@ app.post('/', authMiddleware, async (req, res) => {
 // SSE endpoint for progress updates
 app.get('/research/:jobId/stream', authMiddleware, async (req, res) => {
   const { jobId } = req.params;
-  const redis = new (await import('ioredis')).default(process.env.REDIS_URL || 'redis://localhost:6379');
+  const simpleQueue = await import('./services/simpleQueue.js');
   
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -166,24 +166,44 @@ app.get('/research/:jobId/stream', authMiddleware, async (req, res) => {
   // Send initial connection event
   res.write(`event: connected\ndata: {"jobId": "${jobId}"}\n\n`);
   
+  let lastStatus = '';
+  
   // Poll for progress updates
   const interval = setInterval(async () => {
     try {
-      const progressData = await redis.get(`job:${jobId}:progress`);
+      const job = await simpleQueue.getJob(jobId || '');
+      const progressData = await simpleQueue.getJobProgress(jobId || '');
       
-      if (progressData) {
-        const progress = JSON.parse(progressData);
+      if (job) {
+        const progress = progressData || {
+          jobId: job.id,
+          status: job.status,
+          percentComplete: job.progress,
+          currentStep: job.currentStep || 'Processing',
+          messages: [],
+          pluginStatuses: {},
+          metadata: {
+            jobId: job.id,
+            createdAt: job.createdAt.toISOString(),
+            startedAt: job.startedAt?.toISOString(),
+            attempt: job.attempts,
+            maxAttempts: 3
+          }
+        };
         
         // Send progress event
         res.write(`event: progress\ndata: ${JSON.stringify(progress)}\n\n`);
         
         // If job is complete or failed, send final event and close
-        if (progress.status === 'completed' || progress.status === 'failed') {
-          res.write(`event: ${progress.status}\ndata: ${JSON.stringify(progress)}\n\n`);
-          clearInterval(interval);
-          await redis.quit();
-          res.end();
+        if (job.status === 'completed' || job.status === 'failed') {
+          if (lastStatus !== job.status) {
+            res.write(`event: ${job.status}\ndata: ${JSON.stringify(progress)}\n\n`);
+            clearInterval(interval);
+            res.end();
+          }
         }
+        
+        lastStatus = job.status;
       }
     } catch (error) {
       logger.error({ error, jobId }, 'Error streaming progress');
@@ -191,9 +211,8 @@ app.get('/research/:jobId/stream', authMiddleware, async (req, res) => {
   }, 1000); // Poll every second
   
   // Cleanup on client disconnect
-  req.on('close', async () => {
+  req.on('close', () => {
     clearInterval(interval);
-    await redis.quit();
     logger.info({ jobId }, 'Client disconnected from stream');
   });
 });

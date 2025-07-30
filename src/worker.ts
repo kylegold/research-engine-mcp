@@ -1,38 +1,35 @@
-import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
 import { config } from 'dotenv';
 import { createLogger } from './utils/logger.js';
 import { pluginRegistry } from './plugins/registry.js';
 import { PluginOrchestrator } from './plugins/orchestrator.js';
 import { QueryContext } from './plugins/types.js';
 import { JobLifecycle } from './types/job.js';
+import * as simpleQueue from './services/simpleQueue.js';
 
 // Load environment variables
 config();
 
 const logger = createLogger('worker');
 
-// Redis connection
-const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
-
 // Initialize plugin system
 const orchestrator = new PluginOrchestrator(5);
 
 // Job processing function
-async function processResearchJob(job: Job) {
+async function processResearchJob(job: simpleQueue.Job) {
   const { brief, depth, sources, exportFormat, exportCredentials, userId } = job.data;
   const jobLogger = logger.child({ jobId: job.id, brief });
-  const lifecycle = new JobLifecycle(job.id!, userId);
+  const lifecycle = new JobLifecycle(job.id, userId);
   
   try {
     jobLogger.info('Starting research job');
     lifecycle.start();
     
     // Store initial progress
-    await connection.setex(
-      `job:${job.id}:progress`,
-      300,
-      JSON.stringify(lifecycle.getProgress())
+    await simpleQueue.updateJobProgress(
+      job.id,
+      0,
+      'Initializing',
+      lifecycle.getProgress()
     );
     
     // Set up progress tracking
@@ -48,14 +45,12 @@ async function processResearchJob(job: Job) {
         });
       }
       
-      // Update BullMQ progress
-      await job.updateProgress(state.progress);
-      
-      // Store progress in Redis for SSE streaming
-      await connection.setex(
-        `job:${job.id}:progress`,
-        300,
-        JSON.stringify(lifecycle.getProgress())
+      // Update progress in database
+      await simpleQueue.updateJobProgress(
+        job.id,
+        state.progress,
+        state.message,
+        lifecycle.getProgress()
       );
     });
     
@@ -74,25 +69,14 @@ async function processResearchJob(job: Job) {
     const result = await orchestrator.executeResearch(
       brief,
       context,
-      job.id!
+      job.id
     );
     
     // Mark job as succeeded
     const jobResult = lifecycle.succeed(result);
     
-    // Store final progress
-    await connection.setex(
-      `job:${job.id}:progress`,
-      300,
-      JSON.stringify(lifecycle.getProgress())
-    );
-    
-    // Store result for retrieval
-    await connection.setex(
-      `job:${job.id}:result`,
-      86400, // 24 hour TTL
-      JSON.stringify(jobResult)
-    );
+    // Store final result
+    await simpleQueue.completeJob(job.id, jobResult);
     
     jobLogger.info(
       { 
@@ -111,39 +95,46 @@ async function processResearchJob(job: Job) {
       code: 'RESEARCH_FAILED',
       message: error instanceof Error ? error.message : 'Unknown error',
       details: error,
-      retryable: job.attemptsMade < job.opts.attempts!
+      retryable: job.attempts < 3
     });
     
     // Store error state
-    await connection.setex(
-      `job:${job.id}:progress`,
-      300,
-      JSON.stringify(lifecycle.getProgress())
+    await simpleQueue.failJob(
+      job.id,
+      error instanceof Error ? error.message : 'Unknown error'
     );
     
     throw error;
   }
 }
 
-// Create worker
-const worker = new Worker('research', processResearchJob, {
-  connection,
-  concurrency: 5,
-  autorun: true
-});
-
-// Worker event handlers
-worker.on('completed', (job) => {
-  logger.info({ jobId: job.id }, 'Job completed');
-});
-
-worker.on('failed', (job, err) => {
-  logger.error({ jobId: job?.id, error: err }, 'Job failed');
-});
-
-worker.on('error', (err) => {
-  logger.error({ error: err }, 'Worker error');
-});
+// Worker loop
+async function runWorker() {
+  logger.info('Worker started, polling for jobs...');
+  
+  while (true) {
+    try {
+      // Get next job
+      const job = await simpleQueue.getNextJob();
+      
+      if (job) {
+        logger.info({ jobId: job.id }, 'Processing job');
+        
+        try {
+          await processResearchJob(job);
+        } catch (error) {
+          logger.error({ jobId: job.id, error }, 'Job processing failed');
+        }
+      } else {
+        // No jobs available, wait a bit
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    } catch (error) {
+      logger.error({ error }, 'Worker error');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+}
 
 // Initialize plugin registry on startup
 async function initialize() {
@@ -151,6 +142,9 @@ async function initialize() {
     logger.info('Initializing plugin registry');
     await pluginRegistry.initialize();
     logger.info('Worker ready to process jobs');
+    
+    // Start worker loop
+    await runWorker();
   } catch (error) {
     logger.error({ error }, 'Failed to initialize worker');
     process.exit(1);
@@ -161,9 +155,8 @@ async function initialize() {
 async function shutdown() {
   logger.info('Shutting down worker');
   
-  await worker.close();
   await pluginRegistry.dispose();
-  await connection.quit();
+  simpleQueue.closeDatabase();
   
   logger.info('Worker shutdown complete');
   process.exit(0);

@@ -27,7 +27,7 @@
       },
       "deploy": {
         "startCommand": "node dist/worker.js",
-        "numReplicas": 2
+        "numReplicas": 1
       }
     }
   ]

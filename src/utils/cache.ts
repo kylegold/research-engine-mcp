@@ -1,15 +1,15 @@
-import Redis from 'ioredis';
 import { createHash } from 'crypto';
 import { logger } from './logger.js';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+// Simple in-memory cache as we no longer use Redis
+const memoryCache = new Map<string, { value: any; expires: number }>();
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
   try {
-    const cached = await redis.get(key);
-    if (cached) {
+    const cached = memoryCache.get(key);
+    if (cached && cached.expires > Date.now()) {
       logger.debug({ key }, 'Cache hit');
-      return JSON.parse(cached);
+      return cached.value;
     }
     return null;
   } catch (error) {
@@ -20,7 +20,10 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 
 export async function cacheSet(key: string, value: any, ttl: number = 86400): Promise<void> {
   try {
-    await redis.setex(key, ttl, JSON.stringify(value));
+    memoryCache.set(key, {
+      value,
+      expires: Date.now() + (ttl * 1000)
+    });
     logger.debug({ key, ttl }, 'Cache set');
   } catch (error) {
     logger.error({ error, key }, 'Cache set error');
@@ -57,3 +60,13 @@ export async function withCache<T>(
   
   return result;
 }
+
+// Clean up expired entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of memoryCache.entries()) {
+    if (value.expires < now) {
+      memoryCache.delete(key);
+    }
+  }
+}, 60000); // Every minute

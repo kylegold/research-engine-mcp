@@ -45,3 +45,9 @@ Desktop.ini
 
 # Debug
 .npmrc
+
+# SQLite database files
+data/
+*.db
+*.db-wal
+*.db-shm
