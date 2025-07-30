@@ -1,4 +1,6 @@
-import fetch from 'node-fetch';
+// This file is now deprecated - we use queue.ts instead
+// Keeping for backwards compatibility during migration
+
 import type { 
   ResearchJobRequest, 
   ResearchJobResponse, 
@@ -6,76 +8,41 @@ import type {
   ResearchExportRequest,
   ResearchExportResponse 
 } from '../types.js';
-
-const API_URL = process.env.RESEARCH_API_URL || 'http://localhost:4000';
-const API_KEY = process.env.RESEARCH_API_KEY || 'dev-key';
+import { createResearchJob, getJobStatus } from './queue.js';
 
 export class ResearchApiClient {
-  private headers = {
-    'Authorization': `Bearer ${API_KEY}`,
-    'Content-Type': 'application/json'
-  };
-
   async createJob(request: ResearchJobRequest): Promise<ResearchJobResponse> {
-    try {
-      const response = await fetch(`${API_URL}/api/jobs`, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify(request)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Research API error: ${response.status} ${response.statusText}`);
-      }
-
-      return await response.json() as ResearchJobResponse;
-    } catch (error) {
-      console.error('Failed to create research job:', error);
-      throw new Error('Failed to start research job');
-    }
+    // Now uses local queue instead of external API
+    const result = await createResearchJob(request);
+    return {
+      ...result,
+      estimatedTime: result.estimatedTime
+    };
   }
 
   async getJobStatus(jobId: string): Promise<ResearchStatusResponse> {
-    try {
-      const response = await fetch(`${API_URL}/api/jobs/${jobId}`, {
-        method: 'GET',
-        headers: this.headers
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Research job not found');
-        }
-        throw new Error(`Research API error: ${response.status} ${response.statusText}`);
-      }
-
-      return await response.json() as ResearchStatusResponse;
-    } catch (error) {
-      console.error('Failed to get job status:', error);
-      throw error;
-    }
+    // Now uses local queue instead of external API
+    const status = await getJobStatus(jobId);
+    return status as ResearchStatusResponse;
   }
 
   async exportJob(request: ResearchExportRequest): Promise<ResearchExportResponse> {
-    try {
-      const response = await fetch(`${API_URL}/api/jobs/${request.jobId}/export`, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify({ format: request.format })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Research API error: ${response.status} ${response.statusText}`);
-      }
-
-      return await response.json() as ResearchExportResponse;
-    } catch (error) {
-      console.error('Failed to export research:', error);
-      throw new Error('Failed to export research results');
+    // Export is now handled by the worker, so we just check status
+    const status = await getJobStatus(request.jobId);
+    
+    if (status.status !== 'completed') {
+      return {
+        success: false,
+        error: 'Job not completed yet'
+      };
     }
+    
+    return {
+      success: true,
+      data: status.result
+    };
   }
 
-  // Helper method to estimate completion time
   getEstimatedTime(depth: string = 'standard'): string {
     const estimates = {
       'quick': '5-10 minutes',

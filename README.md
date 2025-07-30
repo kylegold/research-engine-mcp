@@ -12,9 +12,11 @@ AI-powered research automation that turns natural language briefs into actionabl
 
 ## Architecture
 
-This MCP server follows the commands.com pattern:
-- **MCP Server**: Stateless Express.js proxy (this repo)
-- **Research API**: Your backend that does the actual work (separate service)
+This MCP server implements a queue-based architecture:
+- **MCP Server**: Stateless Express.js server that returns job IDs immediately
+- **Worker Process**: Background worker that processes research jobs (5-60 minutes)
+- **Redis Queue**: BullMQ for job management and progress tracking
+- **Same Codebase**: Both server and worker are in this repo
 
 ## Quick Start
 
@@ -34,20 +36,37 @@ cp .env.example .env
 ```
 
 Required environment variables:
-- `RESEARCH_API_URL`: Your research API endpoint
-- `RESEARCH_API_KEY`: API key for your research service
+- `REDIS_URL`: Redis connection for job queue
+- `GITHUB_TOKEN`: GitHub personal access token
+- `OPENAI_API_KEY`: OpenAI API key for analysis
+- `REDDIT_CLIENT_ID/SECRET`: Reddit API credentials (optional)
 
-### 3. Run Development Server
+### 3. Start Redis
 
 ```bash
-# Development mode with auto-reload
-npm run dev
+# Using Docker
+docker run -d -p 6379:6379 redis:alpine
 
-# With auth disabled for testing
-SKIP_AUTH=true npm run dev
+# Or install locally
+brew install redis  # macOS
+brew services start redis
 ```
 
-### 4. Test the Tools
+### 4. Run Development Server
+
+```bash
+# Run both MCP server and worker
+npm run dev:all
+
+# Or run separately:
+npm run dev        # MCP server only
+npm run dev:worker # Worker only
+
+# With auth disabled for testing
+SKIP_AUTH=true npm run dev:all
+```
+
+### 5. Test the Tools
 
 ```bash
 # Test research_brief tool
