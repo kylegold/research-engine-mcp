@@ -41,6 +41,15 @@ COPY command-docs ./command-docs
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
+# Create writable directories for SQLite
+RUN mkdir -p /tmp && \
+    chmod 1777 /tmp
+
+# If using a persistent volume, create and set permissions
+# Uncomment if using Railway volumes or persistent storage
+# RUN mkdir -p /app/data && \
+#     chown -R nodejs:nodejs /app/data
+
 USER nodejs
 
 # Use tini for proper signal handling
