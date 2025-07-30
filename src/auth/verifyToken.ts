@@ -62,7 +62,14 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid authorization header' });
+    return res.status(401).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32600,
+        message: 'Authorization header with Bearer token required'
+      },
+      id: null
+    });
   }
 
   const token = authHeader.substring(7);
@@ -77,7 +84,14 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     next();
   } catch (error) {
     console.error('JWT verification failed:', error);
-    res.status(401).json({ error: 'Invalid token' });
+    res.status(401).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32600,
+        message: 'Invalid or expired token'
+      },
+      id: null
+    });
   }
 }
 

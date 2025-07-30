@@ -1,0 +1,23 @@
+# Railway Environment Variables for Research Engine MCP
+# Copy these to your Railway dashboard
+
+# Required - OpenAI API Key
+OPENAI_API_KEY=your-openai-api-key-here
+
+# JWT Configuration for commands.com
+COMMANDS_JWT_AUDIENCE=research-engine
+COMMANDS_JWT_ISSUER=https://api.commands.com
+COMMANDS_JWKS_URL=https://api.commands.com/.well-known/jwks.json
+
+# Node Environment
+NODE_ENV=production
+
+# Optional - GitHub Token for better rate limits
+GITHUB_TOKEN=your-github-token-here
+
+# Optional - Notion API Key for exports
+# Users will provide their own, but you can set a default
+# NOTION_API_KEY=your-notion-api-key-here
+
+# IMPORTANT: Remove or set to false
+# SKIP_AUTH=false

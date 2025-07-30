@@ -25,7 +25,7 @@ server:
     method: "oauth"
     oauth:
       scopes: "read:user"
-      audience: "commands.com"
+      audience: "research-engine"
       
   deployment:
     upstreamUrl: "https://research-engine-server-production.up.railway.app"
