@@ -1,4 +1,4 @@
-import snoowrap from 'snoowrap';
+// import snoowrap from 'snoowrap';
 
 export async function scrapeReddit(query: string): Promise<any[]> {
   // TODO: Implement actual Reddit scraping

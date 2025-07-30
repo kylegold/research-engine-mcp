@@ -1,8 +1,8 @@
-import { Client } from '@notionhq/client';
+// import { Client } from '@notionhq/client';
 
 export async function exportToNotion(
-  insights: any,
-  config: { notionKey: string; notionDatabaseId: string }
+  _insights: any,
+  _config: { notionKey: string; notionDatabaseId: string }
 ): Promise<any> {
   // TODO: Implement actual Notion export
   // This is a placeholder that you'll need to implement

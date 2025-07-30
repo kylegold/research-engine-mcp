@@ -15,7 +15,9 @@ export class ResearchApiClient {
     // Now uses local queue instead of external API
     const result = await createResearchJob(request);
     return {
-      ...result,
+      jobId: result.jobId || '',
+      status: result.status,
+      message: result.message,
       estimatedTime: result.estimatedTime
     };
   }

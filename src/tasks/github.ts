@@ -8,15 +8,15 @@ const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
   userAgent: 'research-engine/1.0',
   throttle: {
-    onRateLimit: (retryAfter, options) => {
+    onRateLimit: (_retryAfter: any, _options: any) => {
       logger.warn(
-        `Request quota exhausted for request ${options.method} ${options.url}`
+        'Request quota exhausted for GitHub API request'
       );
       return true; // Retry
     },
-    onAbuseLimit: (retryAfter, options) => {
+    onSecondaryRateLimit: (_retryAfter: any, _options: any) => {
       logger.error(
-        `Abuse detected for request ${options.method} ${options.url}`
+        'Secondary rate limit detected for GitHub API request'
       );
       return false; // Don't retry
     }
@@ -93,7 +93,7 @@ async function getRepositoryIssues(repo: any): Promise<GitHubSearchResult[]> {
           owner: repo.owner.login,
           repo: repo.name,
           state: 'open',
-          sort: 'reactions',
+          sort: 'comments',
           direction: 'desc',
           per_page: 30,
           labels: 'bug,enhancement,help wanted,question'
@@ -120,7 +120,7 @@ async function getRepositoryIssues(repo: any): Promise<GitHubSearchResult[]> {
   }, 3600);
 }
 
-async function getRepositoryDiscussions(repo: any): Promise<GitHubSearchResult[]> {
+async function getRepositoryDiscussions(_repo: any): Promise<GitHubSearchResult[]> {
   // GitHub GraphQL would be better for discussions, but REST API doesn't support it well
   // For now, return empty array - implement GraphQL if needed
   return [];

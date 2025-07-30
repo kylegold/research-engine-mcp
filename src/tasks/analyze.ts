@@ -66,14 +66,27 @@ export async function analyzeWithAI(
     
     for (let i = 0; i < chunks.length; i++) {
       logger.info({ chunk: i + 1, total: chunks.length }, 'Analyzing chunk');
-      const analysis = await analyzeChunk(chunks[i], brief, depth);
-      chunkAnalyses.push(analysis);
+      const chunk = chunks[i];
+      if (chunk) {
+        const analysis = await analyzeChunk(chunk, brief, depth);
+        if (analysis) {
+          chunkAnalyses.push(analysis);
+        }
+      }
     }
     
     // Merge analyses if multiple chunks
+    if (chunkAnalyses.length === 0) {
+      throw new Error('No analyses generated');
+    }
+    
     const finalAnalysis = chunks.length > 1 
       ? await mergeAnalyses(chunkAnalyses, brief, depth)
       : chunkAnalyses[0];
+    
+    if (!finalAnalysis) {
+      throw new Error('Failed to generate analysis');
+    }
     
     logger.info({ brief }, 'AI analysis completed');
     return finalAnalysis;
@@ -187,15 +200,20 @@ function chunkSourceData(data: any[], depth: string): any[][] {
 
 async function mergeAnalyses(
   analyses: AnalysisResult[],
-  brief: string,
+  _brief: string,
   depth: string
 ): Promise<AnalysisResult> {
   // For now, just merge the arrays and take the first summary
   // In production, you'd want a more sophisticated merge
   
+  const firstAnalysis = analyses[0];
+  if (!firstAnalysis) {
+    throw new Error('No analyses to merge');
+  }
+  
   const merged: AnalysisResult = {
-    title: analyses[0].title,
-    summary: analyses[0].summary,
+    title: firstAnalysis.title,
+    summary: firstAnalysis.summary,
     painPoints: [],
     opportunities: [],
     insights: [],
@@ -209,11 +227,11 @@ async function mergeAnalyses(
   
   // Merge all arrays
   for (const analysis of analyses) {
-    merged.painPoints.push(...analysis.painPoints);
-    merged.opportunities.push(...analysis.opportunities);
-    merged.insights.push(...analysis.insights);
-    merged.recommendations.push(...analysis.recommendations);
-    merged.metadata.totalSources += analysis.metadata.totalSources;
+    merged.painPoints.push(...(analysis.painPoints || []));
+    merged.opportunities.push(...(analysis.opportunities || []));
+    merged.insights.push(...(analysis.insights || []));
+    merged.recommendations.push(...(analysis.recommendations || []));
+    merged.metadata.totalSources += analysis.metadata?.totalSources || 0;
   }
   
   // Deduplicate and sort

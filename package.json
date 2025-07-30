@@ -37,6 +37,7 @@
     "jwks-rsa": "^3.1.0",
     "node-fetch": "^3.3.2",
     "openai": "^4.24.1",
+    "p-limit": "^4.0.0",
     "p-retry": "^6.2.0",
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",

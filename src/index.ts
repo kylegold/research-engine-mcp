@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { authMiddleware } from './auth/verifyToken.js';
 import { tools } from './tools/index.js';
 import { createLogger } from './utils/logger.js';
-import type { MCPRequest, MCPResponse, MCPError } from './types.js';
+import type { MCPRequest, MCPResponse } from './types.js';
 
 // Load environment variables
 dotenv.config();
@@ -20,12 +20,12 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'research-engine-mcp' });
 });
 
 // MCP discovery endpoint
-app.get('/.well-known/mcp.json', (req, res) => {
+app.get('/.well-known/mcp.json', (_req, res) => {
   res.json({
     version: '1.0.0',
     serverInfo: {
@@ -42,7 +42,7 @@ app.get('/.well-known/mcp.json', (req, res) => {
 });
 
 // List available tools
-app.get('/mcp/tools', authMiddleware, (req, res) => {
+app.get('/mcp/tools', authMiddleware, (_req, res) => {
   const toolList = Array.from(tools.values()).map(tool => ({
     name: tool.name,
     description: tool.description,
@@ -55,10 +55,11 @@ app.get('/mcp/tools', authMiddleware, (req, res) => {
 // Direct tool execution endpoint
 app.post('/mcp/tools/:toolName', authMiddleware, async (req, res) => {
   const { toolName } = req.params;
-  const tool = tools.get(toolName);
+  const tool = tools.get(toolName || '');
   
   if (!tool) {
-    return res.status(404).json({ error: `Tool ${toolName} not found` });
+    res.status(404).json({ error: `Tool ${toolName} not found` });
+    return;
   }
   
   try {
@@ -150,24 +151,55 @@ app.post('/', authMiddleware, async (req, res) => {
   res.json(response);
 });
 
-// SSE endpoint for progress updates (future enhancement)
-app.get('/research/:jobId/stream', authMiddleware, (req, res) => {
+// SSE endpoint for progress updates
+app.get('/research/:jobId/stream', authMiddleware, async (req, res) => {
+  const { jobId } = req.params;
+  const redis = new (await import('ioredis')).default(process.env.REDIS_URL || 'redis://localhost:6379');
+  
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no' // Disable Nginx buffering
   });
 
-  // TODO: Implement real-time progress streaming
-  res.write('data: {"message": "Streaming not yet implemented"}\n\n');
+  // Send initial connection event
+  res.write(`event: connected\ndata: {"jobId": "${jobId}"}\n\n`);
   
-  req.on('close', () => {
-    console.log('Client disconnected from stream');
+  // Poll for progress updates
+  const interval = setInterval(async () => {
+    try {
+      const progressData = await redis.get(`job:${jobId}:progress`);
+      
+      if (progressData) {
+        const progress = JSON.parse(progressData);
+        
+        // Send progress event
+        res.write(`event: progress\ndata: ${JSON.stringify(progress)}\n\n`);
+        
+        // If job is complete or failed, send final event and close
+        if (progress.status === 'completed' || progress.status === 'failed') {
+          res.write(`event: ${progress.status}\ndata: ${JSON.stringify(progress)}\n\n`);
+          clearInterval(interval);
+          await redis.quit();
+          res.end();
+        }
+      }
+    } catch (error) {
+      logger.error({ error, jobId }, 'Error streaming progress');
+    }
+  }, 1000); // Poll every second
+  
+  // Cleanup on client disconnect
+  req.on('close', async () => {
+    clearInterval(interval);
+    await redis.quit();
+    logger.info({ jobId }, 'Client disconnected from stream');
   });
 });
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });

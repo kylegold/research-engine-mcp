@@ -14,8 +14,7 @@ export interface CreateJobOptions {
   sources?: string[];
   userId?: string;
   exportFormat?: 'notion' | 'markdown' | 'json';
-  notionKey?: string;
-  notionDatabaseId?: string;
+  exportCredentials?: Record<string, any>;
 }
 
 export async function createResearchJob(options: CreateJobOptions) {

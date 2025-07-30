@@ -27,7 +27,7 @@ export const researchExportTool: Tool = {
     },
     required: ['jobId']
   },
-  handler: async (args, context) => {
+  handler: async (args, _context) => {
     try {
       // Validate input
       const input = ResearchExportSchema.parse(args);
