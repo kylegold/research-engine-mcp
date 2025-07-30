@@ -28,7 +28,7 @@ server:
       audience: "commands.com"
       
   deployment:
-    upstreamUrl: "https://research-engine.railway.app"  # Update with your deployment URL
+    upstreamUrl: "https://research-engine-server-production.up.railway.app"
         
   provides:
     tools:
