@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { authMiddleware } from './auth/verifyToken.js';
 import { tools } from './tools/index.js';
+import { createLogger } from './utils/logger.js';
 import type { MCPRequest, MCPResponse, MCPError } from './types.js';
 
 // Load environment variables
@@ -11,6 +12,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const logger = createLogger('mcp-server');
 
 // Middleware
 app.use(helmet());

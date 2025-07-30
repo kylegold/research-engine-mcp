@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mcp-server:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - SKIP_AUTH=${SKIP_AUTH:-false}
+      - COMMANDS_JWKS_URL=${COMMANDS_JWKS_URL}
+      - COMMANDS_JWT_ISSUER=${COMMANDS_JWT_ISSUER}
+      - COMMANDS_JWT_AUDIENCE=${COMMANDS_JWT_AUDIENCE}
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: node dist/index.js
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build: .
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-5}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_REFRESH_TOKEN=${REDDIT_REFRESH_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: node dist/worker.js
+    deploy:
+      replicas: 2  # Run 2 workers for better throughput
+
+volumes:
+  redis-data:
