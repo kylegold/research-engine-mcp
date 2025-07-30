@@ -27,16 +27,20 @@ app.get('/health', (_req, res) => {
 // MCP discovery endpoint
 app.get('/.well-known/mcp.json', (_req, res) => {
   res.json({
-    version: '1.0.0',
-    serverInfo: {
-      name: 'research-engine',
-      version: '1.0.0',
-      description: 'AI-powered research automation'
-    },
+    schemaVersion: "2024-11-05",
+    vendor: "Commands.com",
+    name: "research-engine",
+    version: "1.0.0",
+    description: "AI-powered research automation",
+    license: "MIT",
     capabilities: {
-      tools: true,
-      resources: false,
-      prompts: false
+      tools: {
+        listChanged: true
+      }
+    },
+    serverInfo: {
+      name: "research-engine",
+      version: "1.0.0"
     }
   });
 });
