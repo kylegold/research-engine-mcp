@@ -39,7 +39,7 @@ export async function verifyToken(token: string): Promise<JWTPayload> {
       getKey,
       {
         issuer: process.env.COMMANDS_JWT_ISSUER || 'https://api.commands.com',
-        audience: process.env.COMMANDS_JWT_AUDIENCE || 'research-engine',
+        audience: process.env.COMMANDS_JWT_AUDIENCE || 'commands.com',
         algorithms: ['RS256']
       },
       (err, decoded) => {

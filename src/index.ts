@@ -16,8 +16,27 @@ const logger = createLogger('mcp-server');
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: ['https://commands.com', 'https://api.commands.com'],
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
+
+// Root endpoint with basic info
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'research-engine',
+    description: 'AI-powered research automation',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      discovery: '/.well-known/mcp.json',
+      tools: '/mcp/tools',
+      execute: '/mcp/tools/:toolName'
+    },
+    tools: Array.from(tools.values()).map(tool => `${tool.name} - ${tool.description}`)
+  });
+});
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
@@ -77,8 +96,23 @@ app.post('/mcp/tools/:toolName', authMiddleware, async (req, res) => {
   }
 });
 
+// Helper function to send streaming responses for SSE-enabled gateways
+function sendStreamingResponse(res: express.Response, result: any, id: any) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  const response = { jsonrpc: '2.0', result, id };
+  res.write(`data: ${JSON.stringify(response)}\n\n`);
+  res.end();
+}
+
 // Main JSON-RPC endpoint
 app.post('/', authMiddleware, async (req, res) => {
+  // Check if client supports SSE
+  const acceptsSSE = req.headers.accept?.includes('text/event-stream');
+  
   const request = req.body as MCPRequest;
   const response: MCPResponse = {
     jsonrpc: '2.0',
@@ -89,20 +123,22 @@ app.post('/', authMiddleware, async (req, res) => {
     switch (request.method) {
       case 'initialize':
         response.result = {
-          protocolVersion: '1.0.0',
-          serverInfo: {
-            name: 'research-engine',
-            version: '1.0.0',
-            description: 'AI-powered research automation'
-          },
+          protocolVersion: '2025-06-18',
           capabilities: {
             tools: {
-              listTools: true,
-              callTool: true
+              listChanged: true
             }
+          },
+          serverInfo: {
+            name: 'research-engine',
+            version: '1.0.0'
           }
         };
         break;
+
+      case 'notifications/initialized':
+        // Notification - no response needed
+        return res.status(200).end();
 
       case 'tools/list':
         response.result = {
@@ -120,27 +156,46 @@ app.post('/', authMiddleware, async (req, res) => {
         
         if (!tool) {
           response.error = {
-            code: 'ToolNotFound',
-            message: `Tool ${name} not found`
+            code: -32602,
+            message: `Tool not found: ${name}`
           };
         } else {
           try {
             const result = await tool.handler(args, { user: req.user });
-            response.result = result;
+            // Wrap result in MCP format
+            response.result = {
+              content: [
+                {
+                  type: 'text',
+                  text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+                }
+              ]
+            };
           } catch (error) {
             response.error = {
-              code: 'ToolExecutionError',
-              message: error instanceof Error ? error.message : 'Tool execution failed',
-              data: error
+              code: -32603,
+              message: `Tool execution failed: ${(error as Error).message}`
             };
           }
         }
         break;
 
+      case 'resources/list':
+        response.result = {
+          resources: []
+        };
+        break;
+        
+      case 'prompts/list':
+        response.result = {
+          prompts: []
+        };
+        break;
+        
       default:
         response.error = {
-          code: 'MethodNotFound',
-          message: `Method ${request.method} not found`
+          code: -32601,
+          message: `Method not found: ${request.method}`
         };
     }
   } catch (error) {
@@ -152,6 +207,11 @@ app.post('/', authMiddleware, async (req, res) => {
     };
   }
 
+  // Use SSE if client supports it and we have a result
+  if (acceptsSSE && response.result) {
+    return sendStreamingResponse(res, response.result, request.id);
+  }
+  
   res.json(response);
 });
 

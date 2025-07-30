@@ -31,7 +31,7 @@ export interface MCPResponse {
 }
 
 export interface MCPError {
-  code: string;
+  code: string | number;
   message: string;
   data?: any;
 }
