@@ -1,0 +1,95 @@
+name: research-engine
+description: AI-powered research automation for developers and teams
+version: 1.0.0
+author: Kyle Goldfarb
+license: MIT
+
+commands:
+  - name: research
+    title: AI Research Engine
+    type: command
+    category: productivity
+    commandName: "/research"
+    aiPlatform: "claude-code@2025.06"
+    description: Turn any research brief into comprehensive, actionable insights
+    content: command-docs/research.md
+    readme: command-docs/README.md
+    license: LICENSE
+    thumbnail: command-docs/preview.png
+    inputParameters:
+      - name: brief
+        label: Research Brief
+        description: Describe what you want to research
+        type: textarea
+        required: true
+        placeholder: "Find developer pain points for React deployment workflows..."
+        defaultValue: ""
+      - name: depth
+        label: Research Depth
+        description: How thorough should the research be?
+        type: select
+        required: false
+        options:
+          - label: "Quick Analysis (5-10 min)"
+            value: "quick"
+          - label: "Standard Research (15-30 min)"
+            value: "standard"
+          - label: "Deep Dive (45-60 min)"
+            value: "deep"
+        defaultValue: "standard"
+      - name: sources
+        label: Data Sources
+        description: Which sources to include in research
+        type: select-multiple
+        required: false
+        options:
+          - label: "GitHub Repositories"
+            value: "github"
+          - label: "Reddit Discussions"
+            value: "reddit"
+          - label: "Stack Overflow"
+            value: "stackoverflow"
+          - label: "Dev Forums"
+            value: "forums"
+        defaultValue: ["github", "reddit"]
+      - name: export
+        label: Export Format
+        description: How to deliver the research results
+        type: select
+        required: true
+        options:
+          - label: "Notion Database"
+            value: "notion"
+          - label: "Markdown File"
+            value: "markdown"
+          - label: "JSON Data"
+            value: "json"
+        defaultValue: "markdown"
+    mcpRequirements:
+      - serverId: "research-engine"
+        tier: required
+        version: "1.0.0"
+        name: "research-engine"
+        description: "AI-powered research automation"
+        
+  - name: research-status
+    title: Check Research Status
+    type: command
+    category: productivity
+    commandName: "/research-status"
+    aiPlatform: "claude-code@2025.06"
+    description: Check the status of your research job
+    content: command-docs/research-status.md
+    inputParameters:
+      - name: jobId
+        label: Job ID
+        description: The research job ID to check
+        type: text
+        required: true
+        placeholder: "abc-123-def"
+    mcpRequirements:
+      - serverId: "research-engine"
+        tier: required
+        version: "1.0.0"
+        name: "research-engine"
+        description: "AI-powered research automation"

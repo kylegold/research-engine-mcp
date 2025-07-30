@@ -1,0 +1,75 @@
+metadata:
+  version: "1.0"
+  name: "research-engine"
+  description: "AI-powered research automation that turns briefs into actionable insights"
+  author: "Kyle Goldfarb"
+  homepage: "https://github.com/kylegoldfarb/research-engine-mcp"
+  license: "MIT"
+
+server:
+  serverId: "research-engine"
+  displayName: "Research Engine"
+  description: "Automated research from GitHub, Reddit, and web sources with AI analysis"
+  category: "productivity"
+  capabilities:
+    - "research-automation"
+    - "github-analysis"
+    - "reddit-scraping"
+    - "ai-insights"
+    - "notion-export"
+  
+  version: "1.0.0"
+  status: "beta"
+    
+  auth:
+    method: "oauth"
+    oauth:
+      scopes: "read:user"
+      audience: "commands.com"
+      
+  deployment:
+    upstreamUrl: "https://research-engine.railway.app"  # Update with your deployment URL
+        
+  provides:
+    tools:
+      - name: "research_brief"
+        description: "Submit a research brief for automated analysis"
+        parameters:
+          - name: "brief"
+            type: "string"
+            required: true
+            description: "Natural language description of what you want to research"
+          - name: "depth"
+            type: "string"
+            required: false
+            description: "Research depth: quick (5-10min), standard (15-30min), deep (45-60min)"
+          - name: "sources"
+            type: "array"
+            required: false
+            description: "Preferred sources to search (github, reddit, stackoverflow)"
+            
+      - name: "research_status"
+        description: "Check the status of a research job"
+        parameters:
+          - name: "jobId"
+            type: "string"
+            required: true
+            description: "The job ID returned from research_brief"
+            
+      - name: "research_export"
+        description: "Export completed research results"
+        parameters:
+          - name: "jobId"
+            type: "string"
+            required: true
+            description: "The job ID to export"
+          - name: "format"
+            type: "string"
+            required: false
+            description: "Export format: notion, markdown, json"
+
+pricing:
+  type: "free"
+  note: "Free during beta, usage limits apply"
+
+documentation: "README.md"
