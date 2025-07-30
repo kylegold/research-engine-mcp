@@ -6,7 +6,10 @@ import { researchApi } from '../services/researchApi.js';
 const ResearchBriefSchema = z.object({
   brief: z.string().min(10).describe('Natural language description of what you want to research'),
   depth: z.enum(['quick', 'standard', 'deep']).optional().default('standard'),
-  sources: z.array(z.string()).optional().default(['github', 'reddit'])
+  sources: z.array(z.string()).optional().default(['github', 'reddit']),
+  exportFormat: z.enum(['notion', 'markdown', 'json']).optional().default('markdown'),
+  notionKey: z.string().optional(),
+  notionDatabaseId: z.string().optional()
 });
 
 export const researchBriefTool: Tool = {
@@ -31,6 +34,20 @@ export const researchBriefTool: Tool = {
         items: { type: 'string' },
         description: 'Preferred sources to search (github, reddit, stackoverflow)',
         default: ['github', 'reddit']
+      },
+      exportFormat: {
+        type: 'string',
+        enum: ['notion', 'markdown', 'json'],
+        description: 'Export format for results',
+        default: 'markdown'
+      },
+      notionKey: {
+        type: 'string',
+        description: 'Your Notion API key (required if export format is notion)'
+      },
+      notionDatabaseId: {
+        type: 'string',
+        description: 'Your Notion database ID (required if export format is notion)'
       }
     },
     required: ['brief']
@@ -40,12 +57,20 @@ export const researchBriefTool: Tool = {
       // Validate input
       const input = ResearchBriefSchema.parse(args);
       
+      // Validate Notion credentials if needed
+      if (input.exportFormat === 'notion' && (!input.notionKey || !input.notionDatabaseId)) {
+        throw new Error('Notion API key and database ID are required when export format is notion');
+      }
+      
       // Create research job
       const response = await researchApi.createJob({
         brief: input.brief,
         depth: input.depth,
         sources: input.sources,
-        userId: context.user?.id
+        userId: context.user?.id,
+        exportFormat: input.exportFormat,
+        notionKey: input.notionKey,
+        notionDatabaseId: input.notionDatabaseId
       });
 
       return {

@@ -42,6 +42,8 @@ export interface ResearchJobRequest {
   sources?: string[];
   userId?: string;
   exportFormat?: 'notion' | 'markdown' | 'json';
+  notionKey?: string;
+  notionDatabaseId?: string;
 }
 
 export interface ResearchJobResponse {
