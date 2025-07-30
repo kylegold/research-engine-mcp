@@ -1,0 +1,69 @@
+# MCP Server Configuration for Commands.com
+# This file defines how your MCP server integrates with Commands.com
+
+metadata:
+  version: "1.0"
+  name: "test-commands-server"
+  description: "MCP server created with basic template"
+  author: "Your Name"
+  homepage: "https://github.com/Your Name/test-commands-server"
+  license: "MIT"
+
+server:
+  # Basic Configuration
+  serverId: "test-commands-server"
+  displayName: "test-commands-server"
+  description: "MCP server created with basic template"
+  category: "utility"
+  capabilities:
+    - "general-purpose"
+    - "development"
+    - "utilities"
+  
+  # Version & Status
+  version: "1.0.0"
+  status: "alpha"
+  # loomId: "a4d14776b5ae4570a8fa3da9f961b4f1"
+    
+  # Authentication
+  auth:
+    method: "oauth"
+    oauth:
+      scopes: "read:user"
+      audience: "commands.com"
+      
+  # Deployment Configuration
+  deployment:
+    upstreamUrl: "{{PROXY_URL}}"  # Set this to your deployed server URL
+        
+  # Tools & Resources  
+  provides:
+    tools:
+      - name: "ping"
+        description: "Quick connectivity test - returns server status and user info"
+        parameters: []
+            
+      - name: "echo"
+        description: "Echo back the provided message with server metadata"
+        parameters:
+          - name: "message"
+            type: "string"
+            required: true
+            description: "Message to echo back"
+            
+      - name: "datetime"
+        description: "Get current server time in various formats"
+        parameters:
+          - name: "format"
+            type: "string"
+            required: false
+            enum: ["iso", "unix", "readable"]
+            default: "iso"
+            description: "Format for the datetime output"
+
+# Pricing (Free for developer tool)
+pricing:
+  type: "free"
+
+# Documentation points to README.md
+documentation: "README.md"
