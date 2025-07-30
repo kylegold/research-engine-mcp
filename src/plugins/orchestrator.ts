@@ -6,7 +6,8 @@ import {
   QueryContext,
   AnalysisResult,
   ExportContext,
-  Document
+  Document,
+  Insight
 } from './types.js';
 import { pluginRegistry } from './registry.js';
 import { logger as rootLogger } from '../utils/logger.js';
@@ -267,8 +268,8 @@ export class PluginOrchestrator extends EventEmitter {
   private async analyzeDocuments(
     pluginResults: PluginExecutionResult[],
     query: string,
-    _context: QueryContext,
-    _progress: ProgressTracker
+    context: QueryContext,
+    progress: ProgressTracker
   ): Promise<AnalysisResult> {
     // Collect all successful documents
     const allDocuments: Document[] = [];
@@ -288,34 +289,100 @@ export class PluginOrchestrator extends EventEmitter {
       'Analyzing collected documents'
     );
     
-    // TODO: Implement actual AI analysis
-    // For now, return a mock analysis
+    // Use AI analyzer if available, otherwise fallback to basic analysis
+    try {
+      if (process.env.OPENAI_API_KEY) {
+        progress.updatePhase('analysis', 'Performing AI analysis...');
+        
+        const { AIAnalyzer } = await import('../analysis/analyzer.js');
+        const analyzer = new AIAnalyzer();
+        
+        return await analyzer.analyze(
+          allDocuments,
+          query,
+          context.depth || 'standard'
+        );
+      }
+    } catch (error) {
+      logger.warn({ error }, 'AI analysis failed, using fallback');
+    }
+    
+    // Fallback to basic analysis
     return {
       id: `analysis-${Date.now()}`,
       query,
       summary: `Analysis of ${allDocuments.length} documents for query: "${query}"`,
-      insights: [
-        {
-          id: 'insight-1',
-          category: 'trends',
-          title: 'Key Finding',
-          description: 'This is a placeholder insight',
-          importance: 'high',
-          evidence: []
-        }
-      ],
-      recommendations: [
-        'Recommendation 1',
-        'Recommendation 2'
-      ],
+      insights: this.generateBasicInsights(allDocuments, query),
+      recommendations: this.generateBasicRecommendations(allDocuments, query),
       sources: allDocuments.slice(0, 10), // Top 10 documents
       metadata: {
         totalDocuments: allDocuments.length,
         analysisDuration: 0,
-        confidence: 0.8,
+        confidence: 0.5,
         timestamp: new Date().toISOString()
       }
     };
+  }
+
+  /**
+   * Generate basic insights without AI
+   */
+  private generateBasicInsights(documents: Document[], query: string): Insight[] {
+    const insights: Insight[] = [];
+    
+    // Source diversity insight
+    const sources = new Set(documents.map(d => d.metadata.source));
+    if (sources.size > 1) {
+      insights.push({
+        id: 'insight-sources',
+        category: 'fact',
+        title: 'Multiple Sources Consulted',
+        description: `Found relevant information across ${sources.size} different sources: ${Array.from(sources).join(', ')}`,
+        importance: 'medium',
+        evidence: []
+      });
+    }
+    
+    // Recency insight
+    const recentDocs = documents.filter(d => {
+      const timestamp = new Date(d.metadata.timestamp);
+      const daysSince = (Date.now() - timestamp.getTime()) / (1000 * 60 * 60 * 24);
+      return daysSince < 30;
+    });
+    
+    if (recentDocs.length > 0) {
+      insights.push({
+        id: 'insight-recency',
+        category: 'fact',
+        title: 'Recent Information Available',
+        description: `${recentDocs.length} documents from the last 30 days provide current perspectives on "${query}"`,
+        importance: 'high',
+        evidence: recentDocs.slice(0, 3).map(d => ({
+          documentId: d.id,
+          excerpt: d.content.substring(0, 150) + '...'
+        }))
+      });
+    }
+    
+    return insights;
+  }
+
+  /**
+   * Generate basic recommendations without AI
+   */
+  private generateBasicRecommendations(documents: Document[], query: string): string[] {
+    const recommendations: string[] = [];
+    
+    if (documents.length < 5) {
+      recommendations.push('Consider broadening your search terms to find more relevant information');
+    }
+    
+    const sources = new Set(documents.map(d => d.metadata.source));
+    if (sources.size === 1) {
+      recommendations.push('Explore additional sources for a more comprehensive view');
+    }
+    
+    return recommendations;
   }
 
   /**

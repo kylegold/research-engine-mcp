@@ -45,7 +45,8 @@
     "@notionhq/client": "^2.2.14",
     "@octokit/rest": "^20.0.2",
     "uuid": "^9.0.1",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "gpt-tokenizer": "^2.1.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
