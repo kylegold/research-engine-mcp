@@ -11,34 +11,5 @@
     "restartPolicyMaxRetries": 3,
     "healthcheckPath": "/health",
     "healthcheckTimeout": 30
-  },
-  "services": [
-    {
-      "name": "mcp-server",
-      "source": {
-        "repo": "."
-      },
-      "deploy": {
-        "startCommand": "node dist/index.js"
-      },
-      "envVars": {
-        "NODE_ENV": "production",
-        "RAILWAY_ENVIRONMENT": "production"
-      }
-    },
-    {
-      "name": "worker",
-      "source": {
-        "repo": "."
-      },
-      "deploy": {
-        "startCommand": "node dist/worker.js",
-        "numReplicas": 1
-      },
-      "envVars": {
-        "NODE_ENV": "production",
-        "RAILWAY_ENVIRONMENT": "production"
-      }
-    }
-  ]
+  }
 }
