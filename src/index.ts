@@ -109,7 +109,7 @@ function sendStreamingResponse(res: express.Response, result: any, id: any) {
 }
 
 // Main JSON-RPC endpoint
-app.post('/', authMiddleware, async (req, res) => {
+app.post('/', async (req, res) => {
   // Check if client supports SSE
   const acceptsSSE = req.headers.accept?.includes('text/event-stream');
   
@@ -118,6 +118,29 @@ app.post('/', authMiddleware, async (req, res) => {
     jsonrpc: '2.0',
     id: request.id
   };
+
+  // Allow certain methods without authentication for commands.com verification
+  const publicMethods = ['initialize', 'notifications/initialized', 'tools/list', 'resources/list', 'prompts/list'];
+  const requiresAuth = !publicMethods.includes(request.method);
+
+  // Apply authentication only for methods that require it
+  if (requiresAuth && process.env.SKIP_AUTH !== 'true') {
+    await new Promise<void>((resolve, reject) => {
+      authMiddleware(req, res, (err?: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    }).catch(() => {
+      // Auth failed, response already sent by authMiddleware
+      return;
+    });
+
+    // If auth failed, authMiddleware already sent response
+    if (res.headersSent) return;
+  } else if (process.env.SKIP_AUTH === 'true' && process.env.NODE_ENV === 'development') {
+    // Mock user for development
+    req.user = { id: 'dev-user', email: 'dev@example.com' };
+  }
 
   try {
     switch (request.method) {
